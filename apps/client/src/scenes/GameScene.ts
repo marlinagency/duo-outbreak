@@ -71,6 +71,7 @@ export class GameScene extends Phaser.Scene {
   private playerVitalBg!: Phaser.GameObjects.Rectangle;
   private playerHealthBar!: Phaser.GameObjects.Rectangle;
   private playerArmorBar!: Phaser.GameObjects.Rectangle;
+  private lastSparkAt = 0;
   private weaponUnlocks: Array<{ weapon: WeaponId; kills: number }> = [
     { weapon: "smg", kills: 12 },
     { weapon: "shotgun", kills: 28 },
@@ -143,11 +144,6 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(
       this.player, this.enemyProjectiles,
       this.onEnemyProjectilePlayer as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
-      undefined, this,
-    );
-    this.physics.add.collider(
-      this.zombies, this.zombies,
-      this.separateZombies as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
       undefined, this,
     );
     this.physics.add.overlap(
@@ -565,10 +561,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateZombies(time: number) {
+    const playerVelocity = this.player.body!.velocity;
+    const obstacles = this.obstacles.getChildren() as Phaser.Physics.Arcade.Image[];
     this.zombies.getChildren().forEach((child) => {
       const zombie = child as ZombieView;
       if (!zombie.active) return;
-      const playerVelocity = this.player.body!.velocity;
       const lead = zombie.kind === "runner" ? .18 : 0;
       const ringRadius = zombie.kind === "brute" ? 15 : zombie.kind === "runner" ? 285 : 82;
       const targetX = this.player.x + playerVelocity.x * lead + Math.cos(zombie.orbitAngle) * ringRadius;
@@ -604,8 +601,8 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      this.obstacles.getChildren().forEach((object) => {
-        const body = (object as Phaser.Physics.Arcade.Image).body as Phaser.Physics.Arcade.StaticBody;
+      obstacles.forEach((object) => {
+        const body = object.body as Phaser.Physics.Arcade.StaticBody;
         const nearestX = Phaser.Math.Clamp(zombie.x, body.left, body.right);
         const nearestY = Phaser.Math.Clamp(zombie.y, body.top, body.bottom);
         const dx = zombie.x - nearestX;
@@ -672,14 +669,6 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: launchFlash, scale: 3.4, alpha: 0, duration: 180, onComplete: () => launchFlash.destroy() });
     const warning = this.add.circle(zombie.x, zombie.y, 30, 0xff4b24, .55).setDepth(10);
     this.tweens.add({ targets: warning, scale: 2.3, alpha: 0, duration: 260, onComplete: () => warning.destroy() });
-  }
-
-  private separateZombies(a: Phaser.GameObjects.GameObject, b: Phaser.GameObjects.GameObject) {
-    const za = a as ZombieView;
-    const zb = b as ZombieView;
-    const angle = Phaser.Math.Angle.Between(zb.x, zb.y, za.x, za.y);
-    za.body!.velocity.x += Math.cos(angle) * 54;
-    za.body!.velocity.y += Math.sin(angle) * 54;
   }
 
   private tryShoot(time: number, angle: number) {
@@ -764,7 +753,7 @@ export class GameScene extends Phaser.Scene {
       const projectile = child as EnemyProjectileView;
       if (!projectile.active) return;
       projectile.rotation += .06;
-      if (Math.floor(time / 55) % 2 === 0) {
+      if (this.director.wave < 4 && Math.floor(time / 55) % 2 === 0) {
         const trail = this.add.circle(projectile.x, projectile.y, 6, 0xff4d1f, .34)
           .setBlendMode(Phaser.BlendModes.ADD).setDepth(15);
         this.tweens.add({ targets: trail, scale: .15, alpha: 0, duration: 180, onComplete: () => trail.destroy() });
@@ -825,9 +814,13 @@ export class GameScene extends Phaser.Scene {
     this.player.addMutation(zombie.kind === "brute" ? 28 : zombie.kind === "runner" ? 18 : 8);
     this.stats.score += zombie.scoreValue * this.combo;
     this.director.onKilled();
-    const ring = this.add.circle(x, y, 18, zombie.kind === "runner" ? 0xff532f : 0x79b956, .55).setDepth(7);
-    this.tweens.add({ targets: ring, scale: 2.7, alpha: 0, duration: 240, onComplete: () => ring.destroy() });
-    for (let i = 0; i < 7; i++) {
+    const busy = this.director.wave >= 4;
+    if (!busy || this.time.now - this.lastSparkAt > 45) {
+      const ring = this.add.circle(x, y, 18, zombie.kind === "runner" ? 0xff532f : 0x79b956, .55).setDepth(7);
+      this.tweens.add({ targets: ring, scale: 2.7, alpha: 0, duration: 220, onComplete: () => ring.destroy() });
+    }
+    const shardCount = busy ? 3 : 7;
+    for (let i = 0; i < shardCount; i++) {
       const shard = this.add.circle(
         x, y, Phaser.Math.Between(2, 5),
         zombie.kind === "runner" ? 0xff5b32 : 0x718956, .9,
@@ -915,7 +908,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private hitSpark(x: number, y: number, color: number) {
-    for (let i = 0; i < 4; i++) {
+    const busy = this.director.wave >= 4;
+    const now = this.time.now;
+    if (busy && now - this.lastSparkAt < 34) return;
+    this.lastSparkAt = now;
+    const count = busy ? 2 : 4;
+    for (let i = 0; i < count; i++) {
       const dot = this.add.circle(x, y, Phaser.Math.Between(2, 4), color, .9).setDepth(24);
       this.tweens.add({
         targets: dot,
