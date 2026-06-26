@@ -19,6 +19,7 @@ export class ZombieView extends Phaser.Physics.Arcade.Sprite {
   orbitAngle = 0;
   nextRangedAt = 0;
   chargingUntil = 0;
+  private nextHitFlashAt = 0;
 
   constructor(scene: Phaser.Scene) {
     super(scene, -200, -200, "zombie");
@@ -44,6 +45,7 @@ export class ZombieView extends Phaser.Physics.Arcade.Sprite {
     this.orbitAngle = Math.random() * Math.PI * 2;
     this.nextRangedAt = this.scene.time.now + 1200 + Math.random() * 1000;
     this.chargingUntil = 0;
+    this.nextHitFlashAt = 0;
     this.enableBody(true, x, y, true, true);
     this.setTexture(kind === "runner" ? "spitter" : "zombie");
     if (kind === "runner") this.setDisplaySize(82, 82);
@@ -55,10 +57,14 @@ export class ZombieView extends Phaser.Physics.Arcade.Sprite {
 
   hit(damage: number) {
     this.health -= damage;
-    this.setTintFill(0xffffff);
-    this.scene.time.delayedCall(45, () => {
-      if (this.active) this.setTint(ZOMBIES[this.kind].tint);
-    });
+    const now = this.scene.time.now;
+    if (now >= this.nextHitFlashAt) {
+      this.nextHitFlashAt = now + 70;
+      this.setTintFill(0xffffff);
+      this.scene.time.delayedCall(42, () => {
+        if (this.active) this.setTint(ZOMBIES[this.kind].tint);
+      });
+    }
     return this.health <= 0;
   }
 

@@ -72,6 +72,7 @@ export class GameScene extends Phaser.Scene {
   private playerHealthBar!: Phaser.GameObjects.Rectangle;
   private playerArmorBar!: Phaser.GameObjects.Rectangle;
   private lastSparkAt = 0;
+  private lastHitSoundAt = 0;
   private weaponUnlocks: Array<{ weapon: WeaponId; kills: number }> = [
     { weapon: "smg", kills: 12 },
     { weapon: "shotgun", kills: 28 },
@@ -144,11 +145,6 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(
       this.player, this.enemyProjectiles,
       this.onEnemyProjectilePlayer as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
-      undefined, this,
-    );
-    this.physics.add.overlap(
-      this.bullets, this.zombies,
-      this.onBulletZombie as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
       undefined, this,
     );
     this.physics.add.overlap(
@@ -739,13 +735,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateBullets(time: number) {
+    const activeZombies = this.zombies.getChildren().filter((child) => child.active) as ZombieView[];
     this.bullets.getChildren().forEach((child) => {
       const bullet = child as BulletView;
       if (!bullet.active) return;
       if (time >= bullet.expiresAt ||
         bullet.x < WORLD.margin || bullet.x > WORLD.width - WORLD.margin ||
-        bullet.y < WORLD.margin || bullet.y > WORLD.height - WORLD.margin) bullet.despawn();
+        bullet.y < WORLD.margin || bullet.y > WORLD.height - WORLD.margin) {
+        bullet.despawn();
+        return;
+      }
+      this.resolveBulletZombieHits(bullet, activeZombies);
     });
+  }
+
+  private resolveBulletZombieHits(bullet: BulletView, zombies: ZombieView[]) {
+    let remainingHits = bullet.penetration + 1;
+    for (const zombie of zombies) {
+      if (!bullet.active || !zombie.active || bullet.hitIds.has(zombie.entityId)) continue;
+      const radius = zombie.kind === "brute" ? 45 : zombie.kind === "runner" ? 34 : 30;
+      const dx = bullet.x - zombie.x;
+      const dy = bullet.y - zombie.y;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      this.applyBulletHit(bullet, zombie);
+      remainingHits--;
+      if (remainingHits <= 0) break;
+    }
   }
 
   private updateEnemyProjectiles(time: number) {
@@ -783,13 +798,15 @@ export class GameScene extends Phaser.Scene {
     projectile.despawn();
   }
 
-  private onBulletZombie(bulletObject: Phaser.GameObjects.GameObject, zombieObject: Phaser.GameObjects.GameObject) {
-    const bullet = bulletObject as BulletView;
-    const zombie = zombieObject as ZombieView;
+  private applyBulletHit(bullet: BulletView, zombie: ZombieView) {
     if (!bullet.active || !zombie.active || bullet.hitIds.has(zombie.entityId)) return;
     bullet.hitIds.add(zombie.entityId);
     this.stats.hits++;
-    this.sound.play("hit", { volume: .18, detune: Phaser.Math.Between(-150, 120) });
+    const now = this.time.now;
+    if (this.director.wave < 4 || now - this.lastHitSoundAt > 42) {
+      this.lastHitSoundAt = now;
+      this.sound.play("hit", { volume: .18, detune: Phaser.Math.Between(-150, 120) });
+    }
     this.hitSpark(bullet.x, bullet.y, zombie.kind === "runner" ? 0xff533f : 0xb9f278);
     if (zombie.hit(bullet.damage)) this.killZombie(zombie);
     if (bullet.penetration > 0) bullet.penetration--;
