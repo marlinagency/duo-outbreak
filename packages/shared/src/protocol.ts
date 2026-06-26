@@ -7,6 +7,6 @@ export const NET_MESSAGES = {
 
 export const ROOM = {
   maxPlayers: 2,
-  simulationHz: 20,
-  inputHz: 15,
+  simulationHz: 30,
+  inputHz: 30,
 } as const;

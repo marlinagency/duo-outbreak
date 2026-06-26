@@ -14,8 +14,8 @@ export const SERVER_GAME = {
     { x: 735, y: 450 },
     { x: 865, y: 450 },
   ],
-  maxZombies: 46,
-  maxBullets: 90,
+  maxZombies: 70,
+  maxBullets: 130,
 } as const;
 
 export const SERVER_WEAPONS: Record<WeaponId, {

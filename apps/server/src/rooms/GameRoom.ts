@@ -188,7 +188,7 @@ export class GameRoom extends Room<{ state: GameState }> {
     if (this.state.players.size === 0) return;
     if (this.mode === "intermission" && now >= this.intermissionUntil) {
       this.state.wave++;
-      this.state.pending = Math.min(9 + this.state.wave * 3, SERVER_GAME.maxZombies);
+      this.state.pending = Math.min(10 + this.state.wave * 4, 58);
       this.state.waveTotal = this.state.pending;
       this.mode = "spawning";
       this.nextSpawnAt = now + 400;
@@ -196,7 +196,7 @@ export class GameRoom extends Room<{ state: GameState }> {
     if (this.mode === "spawning" && this.state.pending > 0 && now >= this.nextSpawnAt) {
       this.spawnZombie(this.pickZombieKind());
       this.state.pending--;
-      this.nextSpawnAt = now + Math.max(190, 560 - this.state.wave * 18);
+      this.nextSpawnAt = now + Math.max(130, 520 - this.state.wave * 22);
       if (this.state.pending === 0) this.mode = "combat";
     }
     if (this.mode === "combat" && this.state.pending === 0 && this.state.zombies.size === 0) {

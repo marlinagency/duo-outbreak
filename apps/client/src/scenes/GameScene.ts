@@ -200,6 +200,7 @@ export class GameScene extends Phaser.Scene {
 
     this.player.updateMutation(time);
     if (this.roomClient) {
+      this.predictOnlinePlayer(input.moveX, input.moveY, input.aimAngle);
       const networkInput: NetworkInputFrame = { ...input, dt: this.game.loop.delta };
       this.roomClient.sendInput(networkInput, time);
       this.applyOnlineState(time, input.aimAngle);
@@ -234,6 +235,15 @@ export class GameScene extends Phaser.Scene {
     this.updatePlayerVitals();
   }
 
+  private predictOnlinePlayer(moveX: number, moveY: number, aimAngle: number) {
+    const dt = Math.min(this.game.loop.delta / 1000, 0.05);
+    const speed = this.player.isMutant ? 345 : PLAYER.speed;
+    this.player.x = Phaser.Math.Clamp(this.player.x + moveX * speed * dt, WORLD.margin, WORLD.width - WORLD.margin);
+    this.player.y = Phaser.Math.Clamp(this.player.y + moveY * speed * dt, WORLD.margin, WORLD.height - WORLD.margin);
+    this.player.rotation = aimAngle;
+    this.animatePlayer(this.time.now, moveX, moveY);
+  }
+
   private createPlayerVitals() {
     this.playerVitalBg = this.add.rectangle(this.player.x, this.player.y - 62, 56, 9, 0x020506, .36)
       .setOrigin(.5, .5).setDepth(34);
@@ -263,9 +273,11 @@ export class GameScene extends Phaser.Scene {
     if (!state?.players || !sessionId) return;
     const ownState = state.players.get(sessionId);
     if (ownState) {
+      const correctionDistance = Phaser.Math.Distance.Between(this.player.x, this.player.y, ownState.x, ownState.y);
+      const correction = correctionDistance > 110 ? .85 : correctionDistance > 32 ? .22 : .07;
       this.player.setPosition(
-        Phaser.Math.Linear(this.player.x, ownState.x, .35),
-        Phaser.Math.Linear(this.player.y, ownState.y, .35),
+        Phaser.Math.Linear(this.player.x, ownState.x, correction),
+        Phaser.Math.Linear(this.player.y, ownState.y, correction),
       );
       this.player.rotation = ownState.rotation || fallbackAim;
       this.player.health = ownState.health;
@@ -277,10 +289,9 @@ export class GameScene extends Phaser.Scene {
       this.syncOnlineWeaponUnlocks(ownState.weaponLevel ?? 0);
       this.player.restoreAppearance();
       if (!this.player.isMutant) this.player.setWeapon((ownState.weapon as WeaponId) || "pistol");
-      this.animatePlayer(time, ownState.moveX, ownState.moveY);
     }
     this.updateRemotePlayers();
-    this.updateOnlineZombies();
+    this.updateOnlineZombies(time);
     this.updateOnlineBullets();
     this.updateOnlinePickups(time);
     this.stats.wave = state.wave ?? 0;
@@ -347,7 +358,7 @@ export class GameScene extends Phaser.Scene {
     return remote;
   }
 
-  private updateOnlineZombies() {
+  private updateOnlineZombies(time: number) {
     const state = this.roomClient?.state;
     if (!state?.zombies) return;
     const seen = new Set<string>();
@@ -359,14 +370,16 @@ export class GameScene extends Phaser.Scene {
         Phaser.Math.Linear(view.sprite.y, zombieState.y, .32),
       );
       view.sprite.rotation = Phaser.Math.Angle.RotateTo(view.sprite.rotation, zombieState.rotation, .2);
+      const pulse = 1 + Math.sin(time * .014 + id.length) * .035;
       const cfg = ZOMBIES[(zombieState.kind as ZombieKind) || "walker"];
-      if (zombieState.kind === "runner" && view.sprite.displayWidth !== 82) view.sprite.setDisplaySize(82, 82);
-      else if (zombieState.kind !== "runner" && view.sprite.scaleX !== cfg.scale) view.sprite.setScale(cfg.scale);
+      if (zombieState.kind === "runner") view.sprite.setDisplaySize(82 * pulse, 82 / pulse);
+      else view.sprite.setScale(cfg.scale * pulse, cfg.scale / pulse);
       view.hp.setPosition(view.sprite.x - 24, view.sprite.y - 42);
       view.hp.width = 48 * Math.max(0, zombieState.health / Math.max(1, zombieState.maxHealth));
     });
     [...this.onlineZombies.entries()].forEach(([id, view]) => {
       if (seen.has(id)) return;
+      this.hitSpark(view.sprite.x, view.sprite.y, 0x86d96b);
       view.sprite.destroy();
       view.hp.destroy();
       this.onlineZombies.delete(id);
