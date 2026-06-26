@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: duo-outbreak
+    name: duo-outbreak-marlinagency
     runtime: node
     plan: free
     region: frankfurt
