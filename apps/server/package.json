@@ -1,0 +1,27 @@
+{
+  "name": "@duo-outbreak/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "start:public": "tsx src/index.ts --serve-client",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@colyseus/core": "^0.17.44",
+    "@colyseus/schema": "^3.0.76",
+    "@colyseus/ws-transport": "^0.17.13",
+    "@duo-outbreak/shared": "workspace:*",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  }
+}

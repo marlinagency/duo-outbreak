@@ -1,0 +1,57 @@
+@font-face {
+  font-family: "Kenney Future";
+  src: url("/assets/kenney/ui/Kenney Future.ttf") format("truetype");
+  font-display: swap;
+}
+
+:root {
+  color: #edf7f7;
+  background: #020506;
+  font-family: "Kenney Future", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #game {
+  width: 100dvw;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: none;
+  background: #020506;
+  position: fixed;
+  inset: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+canvas {
+  display: block;
+  width: 100dvw !important;
+  height: 100dvh !important;
+}
+
+#rotate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+  background: radial-gradient(circle at center, #123136, #030708 70%);
+  color: #e8ffff;
+  letter-spacing: .08em;
+}
+
+#rotate-overlay strong { color: #57f1e4; font-size: clamp(22px, 8vw, 42px); }
+#rotate-overlay span { color: #91aeb0; font-size: 14px; }
+
+@media (orientation: portrait) {
+  #rotate-overlay { display: flex; }
+}

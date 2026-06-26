@@ -1,0 +1,14 @@
+{
+  "name": "duo-outbreak",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "corepack pnpm --filter @duo-outbreak/client dev",
+    "dev:client": "corepack pnpm --filter @duo-outbreak/client dev",
+    "dev:server": "corepack pnpm --filter @duo-outbreak/server dev",
+    "start:public": "corepack pnpm --filter @duo-outbreak/server start:public",
+    "build": "corepack pnpm -r build",
+    "typecheck": "corepack pnpm -r typecheck"
+  }
+}

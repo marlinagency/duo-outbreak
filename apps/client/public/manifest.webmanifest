@@ -1,0 +1,10 @@
+{
+  "name": "Duo Outbreak",
+  "short_name": "Outbreak",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05090b",
+  "theme_color": "#071114",
+  "orientation": "landscape",
+  "icons": []
+}
