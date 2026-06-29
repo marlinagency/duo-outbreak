@@ -194,7 +194,7 @@ export class GameRoom extends Room<{ state: GameState }> {
     if (this.state.players.size === 0) return;
     if (this.mode === "intermission" && now >= this.intermissionUntil) {
       this.state.wave++;
-      this.state.pending = Math.min(10 + this.state.wave * 4, 58);
+      this.state.pending = Math.min(9 + this.state.wave * 3, 46);
       this.state.waveTotal = this.state.pending;
       this.mode = "spawning";
       this.nextSpawnAt = now + 400;
@@ -202,7 +202,7 @@ export class GameRoom extends Room<{ state: GameState }> {
     if (this.mode === "spawning" && this.state.pending > 0 && now >= this.nextSpawnAt) {
       this.spawnZombie(this.pickZombieKind());
       this.state.pending--;
-      this.nextSpawnAt = now + Math.max(130, 520 - this.state.wave * 22);
+      this.nextSpawnAt = now + Math.max(165, 540 - this.state.wave * 20);
       if (this.state.pending === 0) this.mode = "combat";
     }
     if (this.mode === "combat" && this.state.pending === 0 && this.state.zombies.size === 0) {
@@ -337,6 +337,7 @@ export class GameRoom extends Room<{ state: GameState }> {
   private updateBullets(dt: number, now: number) {
     const deadBullets: string[] = [];
     const deadZombies: Array<{ zombie: ZombieState; ownerId: string }> = [];
+    const zombieBuckets = this.buildZombieBuckets();
     this.state.bullets.forEach((bullet, bulletId) => {
       bullet.x += Math.cos(bullet.angle) * bullet.speed * dt;
       bullet.y += Math.sin(bullet.angle) * bullet.speed * dt;
@@ -357,7 +358,7 @@ export class GameRoom extends Room<{ state: GameState }> {
           break;
         }
       } else {
-        for (const zombie of this.state.zombies.values()) {
+        for (const zombie of this.nearbyZombies(bullet.x, bullet.y, zombieBuckets)) {
           if (distanceBetween(bullet.x, bullet.y, zombie.x, zombie.y) > zombieHitRadius(zombie.kind)) continue;
           zombie.health -= bullet.damage;
           deadBullets.push(bulletId);
@@ -368,6 +369,32 @@ export class GameRoom extends Room<{ state: GameState }> {
     });
     deadBullets.forEach((id) => this.state.bullets.delete(id));
     deadZombies.forEach(({ zombie, ownerId }) => this.killZombie(zombie, ownerId));
+  }
+
+  private buildZombieBuckets() {
+    const cellSize = 160;
+    const buckets = new Map<string, ZombieState[]>();
+    this.state.zombies.forEach((zombie) => {
+      const key = `${Math.floor(zombie.x / cellSize)},${Math.floor(zombie.y / cellSize)}`;
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(zombie);
+      else buckets.set(key, [zombie]);
+    });
+    return buckets;
+  }
+
+  private nearbyZombies(x: number, y: number, buckets: Map<string, ZombieState[]>) {
+    const cellSize = 160;
+    const cellX = Math.floor(x / cellSize);
+    const cellY = Math.floor(y / cellSize);
+    const nearby: ZombieState[] = [];
+    for (let gx = cellX - 1; gx <= cellX + 1; gx++) {
+      for (let gy = cellY - 1; gy <= cellY + 1; gy++) {
+        const bucket = buckets.get(`${gx},${gy}`);
+        if (bucket) nearby.push(...bucket);
+      }
+    }
+    return nearby;
   }
 
   private updatePickups(now: number) {

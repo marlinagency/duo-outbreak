@@ -13,6 +13,6 @@ export const PLAYER = {
 
 export const SIMULATION = {
   fixedStepMs: 1000 / 30,
-  maxZombies: 70,
-  maxBullets: 130,
+  maxZombies: 48,
+  maxBullets: 96,
 } as const;

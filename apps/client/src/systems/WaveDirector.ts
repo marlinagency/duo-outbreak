@@ -14,7 +14,7 @@ export class WaveDirector {
   update(now: number, spawn: (kind: ZombieKind) => boolean, onWave: (wave: number) => void) {
     if (this.state === "intermission" && now >= this.intermissionUntil) {
       this.wave++;
-      this.pending = Math.min(10 + this.wave * 4, 58);
+      this.pending = Math.min(9 + this.wave * 3, 46);
       this.waveTotal = this.pending;
       this.state = "spawning";
       this.nextSpawnAt = now + 400;
@@ -32,7 +32,7 @@ export class WaveDirector {
         this.pending--;
         this.alive++;
       }
-      this.nextSpawnAt = now + Math.max(130, 520 - this.wave * 22);
+      this.nextSpawnAt = now + Math.max(165, 540 - this.wave * 20);
       if (this.pending === 0) this.state = "combat";
     }
     if (this.state === "combat" && this.alive === 0) {
@@ -42,5 +42,6 @@ export class WaveDirector {
   }
 
   onKilled() { this.alive = Math.max(0, this.alive - 1); }
+  syncAlive(actualAlive: number) { this.alive = Math.max(0, actualAlive); }
   get remaining() { return this.pending + this.alive; }
 }

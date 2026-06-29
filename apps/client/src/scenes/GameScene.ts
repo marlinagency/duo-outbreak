@@ -75,6 +75,7 @@ export class GameScene extends Phaser.Scene {
   private playerArmorBar!: Phaser.GameObjects.Rectangle;
   private lastSparkAt = 0;
   private lastHitSoundAt = 0;
+  private lastDeathFxAt = 0;
   private fairySprite?: Phaser.GameObjects.Image;
   private fairyAura?: Phaser.GameObjects.Arc;
   private fairyBoltNextAt = 0;
@@ -227,6 +228,7 @@ export class GameScene extends Phaser.Scene {
     this.updateBullets(time);
     this.updateEnemyProjectiles(time);
     this.updatePickups(time);
+    this.director.syncAlive(this.zombies.countActive(true));
     this.director.update(time, (kind) => this.spawnZombie(kind), (wave) => this.startWave(wave));
     if (time > this.comboExpiresAt) this.combo = 1;
 
@@ -811,6 +813,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateBullets(time: number) {
     const activeZombies = this.zombies.getChildren().filter((child) => child.active) as ZombieView[];
+    const zombieBuckets = this.buildZombieBuckets(activeZombies);
     this.bullets.getChildren().forEach((child) => {
       const bullet = child as BulletView;
       if (!bullet.active) return;
@@ -820,21 +823,42 @@ export class GameScene extends Phaser.Scene {
         bullet.despawn();
         return;
       }
-      this.resolveBulletZombieHits(bullet, activeZombies);
+      this.resolveBulletZombieHits(bullet, zombieBuckets);
     });
   }
 
-  private resolveBulletZombieHits(bullet: BulletView, zombies: ZombieView[]) {
+  private buildZombieBuckets(zombies: ZombieView[]) {
+    const cellSize = 160;
+    const buckets = new Map<string, ZombieView[]>();
+    zombies.forEach((zombie) => {
+      const key = `${Math.floor(zombie.x / cellSize)},${Math.floor(zombie.y / cellSize)}`;
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(zombie);
+      else buckets.set(key, [zombie]);
+    });
+    return buckets;
+  }
+
+  private resolveBulletZombieHits(bullet: BulletView, buckets: Map<string, ZombieView[]>) {
+    const cellSize = 160;
+    const cellX = Math.floor(bullet.x / cellSize);
+    const cellY = Math.floor(bullet.y / cellSize);
     let remainingHits = bullet.penetration + 1;
-    for (const zombie of zombies) {
-      if (!bullet.active || !zombie.active || bullet.hitIds.has(zombie.entityId)) continue;
-      const radius = zombieHitRadius(zombie.kind);
-      const dx = bullet.x - zombie.x;
-      const dy = bullet.y - zombie.y;
-      if (dx * dx + dy * dy > radius * radius) continue;
-      this.applyBulletHit(bullet, zombie);
-      remainingHits--;
-      if (remainingHits <= 0) break;
+    for (let gx = cellX - 1; gx <= cellX + 1 && bullet.active && remainingHits > 0; gx++) {
+      for (let gy = cellY - 1; gy <= cellY + 1 && bullet.active && remainingHits > 0; gy++) {
+        const zombies = buckets.get(`${gx},${gy}`);
+        if (!zombies) continue;
+        for (const zombie of zombies) {
+          if (!bullet.active || remainingHits <= 0) break;
+          if (!zombie.active || bullet.hitIds.has(zombie.entityId)) continue;
+          const radius = zombieHitRadius(zombie.kind);
+          const dx = bullet.x - zombie.x;
+          const dy = bullet.y - zombie.y;
+          if (dx * dx + dy * dy > radius * radius) continue;
+          this.applyBulletHit(bullet, zombie);
+          remainingHits--;
+        }
+      }
     }
   }
 
@@ -907,26 +931,31 @@ export class GameScene extends Phaser.Scene {
     this.stats.score += zombie.scoreValue * this.combo;
     this.director.onKilled();
     const busy = this.director.wave >= 4;
-    if (!busy || this.time.now - this.lastSparkAt > 45) {
+    const now = this.time.now;
+    const allowDeathFx = !busy || now - this.lastDeathFxAt > 70;
+    if (allowDeathFx) {
+      this.lastDeathFxAt = now;
       const ring = this.add.circle(x, y, 18, zombieDeathColor(zombie.kind), .55).setDepth(7);
       this.tweens.add({ targets: ring, scale: 2.7, alpha: 0, duration: 220, onComplete: () => ring.destroy() });
     }
-    const shardCount = busy ? 3 : 7;
-    for (let i = 0; i < shardCount; i++) {
-      const shard = this.add.circle(
-        x, y, Phaser.Math.Between(2, 5),
-        zombieDeathColor(zombie.kind), .9,
-      ).setDepth(14);
-      this.tweens.add({
-        targets: shard,
-        x: x + Phaser.Math.Between(-52, 52),
-        y: y + Phaser.Math.Between(-52, 52),
-        scale: .2,
-        alpha: 0,
-        duration: Phaser.Math.Between(260, 480),
-        ease: "Quad.Out",
-        onComplete: () => shard.destroy(),
-      });
+    if (allowDeathFx) {
+      const shardCount = busy ? 2 : 7;
+      for (let i = 0; i < shardCount; i++) {
+        const shard = this.add.circle(
+          x, y, Phaser.Math.Between(2, 5),
+          zombieDeathColor(zombie.kind), .9,
+        ).setDepth(14);
+        this.tweens.add({
+          targets: shard,
+          x: x + Phaser.Math.Between(-52, 52),
+          y: y + Phaser.Math.Between(-52, 52),
+          scale: .2,
+          alpha: 0,
+          duration: Phaser.Math.Between(260, 480),
+          ease: "Quad.Out",
+          onComplete: () => shard.destroy(),
+        });
+      }
     }
     const unlock = this.weaponUnlocks.find(({ weapon, kills }) =>
       this.stats.kills >= kills &&
