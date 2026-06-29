@@ -1,5 +1,12 @@
 import Phaser from "phaser";
 
+type ProjectileOptions = {
+  damage?: number;
+  speed?: number;
+  size?: number;
+  tint?: number;
+};
+
 export class EnemyProjectileView extends Phaser.Physics.Arcade.Image {
   damage = 0;
   expiresAt = 0;
@@ -11,13 +18,17 @@ export class EnemyProjectileView extends Phaser.Physics.Arcade.Image {
     this.setActive(false).setVisible(false).setDepth(19);
   }
 
-  fire(x: number, y: number, angle: number, now: number) {
-    this.damage = 34;
+  fire(x: number, y: number, angle: number, now: number, options: ProjectileOptions = {}) {
+    const size = options.size ?? 34;
+    this.damage = options.damage ?? 34;
     this.expiresAt = now + 2800;
     this.enableBody(true, x, y, true, true);
-    this.setDisplaySize(34, 34).setRotation(angle);
-    this.scene.physics.velocityFromRotation(angle, 330, this.body!.velocity);
+    this.setDisplaySize(size, size).setRotation(angle).setTint(options.tint ?? 0xffffff);
+    this.scene.physics.velocityFromRotation(angle, options.speed ?? 330, this.body!.velocity);
   }
 
-  despawn() { this.disableBody(true, true); }
+  despawn() {
+    this.clearTint();
+    this.disableBody(true, true);
+  }
 }

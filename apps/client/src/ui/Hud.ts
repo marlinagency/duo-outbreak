@@ -3,7 +3,7 @@ import type { RunStats, WeaponId } from "@duo-outbreak/shared";
 import { WEAPONS } from "../config/gameConfig";
 import type { PlayerView } from "../entities/PlayerView";
 
-const WEAPON_ORDER: WeaponId[] = ["pistol", "smg", "shotgun", "rifle", "magnum"];
+const WEAPON_ORDER: WeaponId[] = ["pistol", "smg", "shotgun", "rifle", "magnum", "plasma", "flamer"];
 
 export class Hud {
   private healthBar!: Phaser.GameObjects.Rectangle;
@@ -92,10 +92,6 @@ export class Hud {
     this.scoreText = fixed(scene.add.text(1548, 35, "0", {
       fontFamily: "Kenney Future", fontSize: "32px", color: "#ffffff",
     }).setOrigin(1, 0));
-    this.ammoText.setPosition(80, 112).setOrigin(0).setStyle({
-      fontFamily: "Kenney Future", fontSize: "22px", color: "#ffffff",
-      stroke: "#020303", strokeThickness: 5,
-    });
     this.killsText = fixed(scene.add.text(1230, 88, "KILLS  0", {
       fontFamily: "Kenney Future", fontSize: "13px", color: "#9db4b5",
     }));
@@ -120,26 +116,26 @@ export class Hud {
     }).setOrigin(1, 0));
     fixed(scene.add.rectangle(48, 854, 210, 7, 0x173016).setOrigin(0));
     this.mutationBar = fixed(scene.add.rectangle(48, 854, 0, 7, 0x78ff45).setOrigin(0));
-    this.mutationText = fixed(scene.add.text(278, 848, "Q MUTATION 0%", {
-      fontFamily: "Kenney Future", fontSize: "9px", color: "#6e8b6c",
+    this.mutationText = fixed(scene.add.text(278, 848, "Q FAIRY 0%", {
+      fontFamily: "Kenney Future", fontSize: "9px", color: "#5f9e9d",
     }).setOrigin(1, 0));
 
-    const slotWidth = 166;
-    const gap = 10;
-    const startX = 330;
+    const slotWidth = 118;
+    const gap = 8;
+    const startX = 326;
     WEAPON_ORDER.forEach((id, index) => {
       const x = startX + index * (slotWidth + gap);
       const frame = fixed(scene.add.rectangle(x, 788, slotWidth, 82, 0x020709, .93)
         .setOrigin(0).setStrokeStyle(2, 0x34484a));
       fixed(scene.add.text(x + 10, 797, `${index + 1}`, {
-        fontFamily: "Kenney Future", fontSize: "14px", color: "#ffffff",
+        fontFamily: "Kenney Future", fontSize: "13px", color: "#ffffff",
       }));
-      fixed(scene.add.image(x + 81, 820, `weapon-${id}`).setDisplaySize(72, 29));
+      fixed(scene.add.image(x + 60, 820, `weapon-${id}`).setDisplaySize(66, 28));
       const label = fixed(scene.add.text(x + 12, 849, WEAPONS[id].name.split(" ")[0], {
-        fontFamily: "Kenney Future", fontSize: "9px", color: "#768d8e",
+        fontFamily: "Kenney Future", fontSize: "8px", color: "#768d8e",
       }));
-      const ammo = fixed(scene.add.text(x + 154, 846, "0/0", {
-        fontFamily: "Kenney Future", fontSize: "12px", color: "#ffffff",
+      const ammo = fixed(scene.add.text(x + 108, 846, "0/0", {
+        fontFamily: "Kenney Future", fontSize: "10px", color: "#ffffff",
       }).setOrigin(1, 0));
       this.weaponSlots.set(id, { frame, ammo, label });
     });
@@ -223,8 +219,8 @@ export class Hud {
     this.statusText.setPosition(80, 170).setOrigin(0);
     fixed(scene.add.rectangle(80, 198, 230, 8, 0x173016).setOrigin(0).setAlpha(.8));
     this.mutationBar = fixed(scene.add.rectangle(80, 198, 0, 8, 0x78ff45).setOrigin(0));
-    this.mutationText = fixed(scene.add.text(80, 212, "MUTATION 0%", {
-      fontFamily: "Kenney Future", fontSize: "10px", color: "#adff75",
+    this.mutationText = fixed(scene.add.text(80, 212, "FAIRY 0%", {
+      fontFamily: "Kenney Future", fontSize: "10px", color: "#8dfffa",
       stroke: "#020303", strokeThickness: 3,
     }));
 
@@ -275,29 +271,31 @@ export class Hud {
     this.timerText.setText(`${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`);
     this.statusText.setText(
       player.reloadingUntil > now ? "RELOADING" :
+      player.isMutant ? "FAIRY GUARD ACTIVE" :
       player.overdriveUntil > now ? "OVERDRIVE ACTIVE" :
       player.armor <= 0 ? "ARMOR BROKEN" : "SYSTEMS NOMINAL",
     );
     this.statusText.setColor(
       player.reloadingUntil > now ? "#ffffff" :
+      player.isMutant ? "#8dfffa" :
       player.overdriveUntil > now ? "#ffbd36" :
       player.armor <= 0 ? "#ff594b" : "#67e9df",
     );
     if (player.isMutant) {
       const remaining = Math.max(0, player.mutantUntil - now);
       this.mutationBar.width = (this.mobile ? 230 : 210) * remaining / 6000;
-      this.mutationText.setText(`MUTANT ${Math.ceil(remaining / 1000)}S // SPACE`);
-      this.mutationText.setColor("#adff75");
+      this.mutationText.setText(`FAIRY ${Math.ceil(remaining / 1000)}S // SPACE`);
+      this.mutationText.setColor("#8dfffa");
     } else {
       this.mutationBar.width = (this.mobile ? 230 : 210) * player.mutation / 100;
-      this.mutationText.setText(player.mutation >= 100 ? "Q MUTATION READY" : `Q MUTATION ${Math.floor(player.mutation)}%`);
-      this.mutationText.setColor(player.mutation >= 100 ? "#adff75" : "#6e8b6c");
+      this.mutationText.setText(player.mutation >= 100 ? "Q FAIRY READY" : `Q FAIRY ${Math.floor(player.mutation)}%`);
+      this.mutationText.setColor(player.mutation >= 100 ? "#8dfffa" : "#5f9e9d");
     }
 
     const activeAmmo = player.ammo[player.weapon];
-    this.weaponText.setText(player.isMutant ? "MUTATION OVERDRIVE" : WEAPONS[player.weapon].name);
+    this.weaponText.setText(player.isMutant ? "FAIRY GUARDIAN" : WEAPONS[player.weapon].name);
     this.ammoText.setText(
-      player.isMutant ? "SMASH" :
+      player.isMutant ? "AURA" :
       player.weapon === "pistol" ? `${activeAmmo.mag} / ∞` :
       `${activeAmmo.mag} / ${activeAmmo.reserve}`,
     );

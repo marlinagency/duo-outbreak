@@ -45,6 +45,8 @@ type OnlineZombieView = {
 };
 type OnlinePickupView = Phaser.GameObjects.Image & { kind?: string };
 
+const WEAPON_ORDER: WeaponId[] = ["pistol", "smg", "shotgun", "rifle", "magnum", "plasma", "flamer"];
+
 export class GameScene extends Phaser.Scene {
   private player!: PlayerView;
   private controls!: DesktopControls;
@@ -73,11 +75,18 @@ export class GameScene extends Phaser.Scene {
   private playerArmorBar!: Phaser.GameObjects.Rectangle;
   private lastSparkAt = 0;
   private lastHitSoundAt = 0;
+  private fairySprite?: Phaser.GameObjects.Image;
+  private fairyAura?: Phaser.GameObjects.Arc;
+  private fairyBoltNextAt = 0;
+  private fairyPulseNextAt = 0;
+  private fairyTrailNextAt = 0;
   private weaponUnlocks: Array<{ weapon: WeaponId; kills: number }> = [
     { weapon: "smg", kills: 12 },
     { weapon: "shotgun", kills: 28 },
     { weapon: "rifle", kills: 50 },
     { weapon: "magnum", kills: 80 },
+    { weapon: "plasma", kills: 115 },
+    { weapon: "flamer", kills: 150 },
   ];
   private spawnPoints = [
     { x: 800, y: 150 },
@@ -94,6 +103,7 @@ export class GameScene extends Phaser.Scene {
 
     this.player = new PlayerView(this, 800, 460);
     this.createPlayerVitals();
+    this.createFairyPowerVisuals();
     this.controls = new DesktopControls(this);
     this.director = new WaveDirector();
     if (new URLSearchParams(window.location.search).has("qa")) {
@@ -196,6 +206,7 @@ export class GameScene extends Phaser.Scene {
       const networkInput: NetworkInputFrame = { ...input, dt: this.game.loop.delta };
       this.roomClient.sendInput(networkInput, time);
       this.applyOnlineState(time, input.aimAngle);
+      this.updateFairyPower(time);
       return;
     }
     const moveSpeed = this.player.isMutant ? 345 : PLAYER.speed;
@@ -211,6 +222,7 @@ export class GameScene extends Phaser.Scene {
       else this.tryShoot(time, input.aimAngle);
     }
     if (this.player.isMutant && input.mutantShockwave) this.mutantShockwave(time);
+    this.updateFairyPower(time);
     this.updateZombies(time);
     this.updateBullets(time);
     this.updateEnemyProjectiles(time);
@@ -243,6 +255,20 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0, .5).setDepth(35);
     this.playerArmorBar = this.add.rectangle(this.player.x - 27, this.player.y - 58, 54, 3, 0x2b91d8, .7)
       .setOrigin(0, .5).setDepth(35);
+  }
+
+  private createFairyPowerVisuals() {
+    this.fairyAura = this.add.circle(this.player.x, this.player.y, 74, 0x8dfffa, .08)
+      .setStrokeStyle(4, 0xb585ff, .55)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(23)
+      .setVisible(false);
+    this.fairySprite = this.add.image(this.player.x + 62, this.player.y - 26, "fairy-companion")
+      .setDisplaySize(70, 70)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(36)
+      .setVisible(false)
+      .setAlpha(0);
   }
 
   private updatePlayerVitals() {
@@ -363,8 +389,10 @@ export class GameScene extends Phaser.Scene {
       );
       view.sprite.rotation = Phaser.Math.Angle.RotateTo(view.sprite.rotation, zombieState.rotation, .2);
       const pulse = 1 + Math.sin(time * .014 + id.length) * .035;
-      const cfg = ZOMBIES[(zombieState.kind as ZombieKind) || "walker"];
-      if (zombieState.kind === "runner") view.sprite.setDisplaySize(82 * pulse, 82 / pulse);
+      const kind = (zombieState.kind as ZombieKind) || "walker";
+      const cfg = ZOMBIES[kind];
+      const display = zombieDisplaySize(kind);
+      if (display) view.sprite.setDisplaySize(display.width * pulse, display.height / pulse);
       else view.sprite.setScale(cfg.scale * pulse, cfg.scale / pulse);
       view.hp.setPosition(view.sprite.x - 24, view.sprite.y - 42);
       view.hp.width = 48 * Math.max(0, zombieState.health / Math.max(1, zombieState.maxHealth));
@@ -383,9 +411,10 @@ export class GameScene extends Phaser.Scene {
     if (existing) return existing;
     const kind = (state.kind as ZombieKind) || "walker";
     const cfg = ZOMBIES[kind];
-    const sprite = this.add.sprite(state.x, state.y, kind === "runner" ? "spitter" : "zombie")
+    const sprite = this.add.sprite(state.x, state.y, zombieTexture(kind))
       .setTint(cfg.tint).setDepth(12);
-    if (kind === "runner") sprite.setDisplaySize(82, 82);
+    const display = zombieDisplaySize(kind);
+    if (display) sprite.setDisplaySize(display.width, display.height);
     else sprite.setScale(cfg.scale);
     const hp = this.add.rectangle(state.x - 24, state.y - 42, 48, 5, 0xf04439, .88)
       .setOrigin(0, .5).setDepth(13);
@@ -403,7 +432,10 @@ export class GameScene extends Phaser.Scene {
       let bullet = this.onlineBullets.get(id);
       if (!bullet) {
         bullet = bulletState.hostile
-          ? this.add.image(bulletState.x, bulletState.y, "spitter-orb").setDisplaySize(34, 34).setDepth(19)
+          ? this.add.image(bulletState.x, bulletState.y, "spitter-orb")
+            .setDisplaySize(Math.max(24, bulletState.width), Math.max(24, bulletState.width))
+            .setTint(bulletState.color)
+            .setDepth(19)
           : this.add.rectangle(bulletState.x, bulletState.y, bulletState.width, Math.max(4, bulletState.width * .28), bulletState.color)
             .setDepth(18);
         this.onlineBullets.set(id, bullet);
@@ -419,8 +451,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private syncOnlineWeaponUnlocks(level: number) {
-    const order: WeaponId[] = ["pistol", "smg", "shotgun", "rifle", "magnum"];
-    order.forEach((weapon, index) => {
+    WEAPON_ORDER.forEach((weapon, index) => {
       if (index <= level) this.player.unlockedWeapons.add(weapon);
     });
   }
@@ -524,26 +555,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnZombie(kind: ZombieKind) {
-    if (kind === "runner") {
-      const activeSpitters = this.zombies.getChildren().filter((child) => {
+    const activeKindCount = (targetKind: ZombieKind) =>
+      this.zombies.getChildren().filter((child) => {
         const zombie = child as ZombieView;
-        return zombie.active && zombie.kind === "runner";
+        return zombie.active && zombie.kind === targetKind;
       }).length;
+    if (kind === "runner") {
+      const activeSpitters = activeKindCount("runner");
       const cap = this.director.wave <= 4 ? 2 : this.director.wave <= 8 ? 3 : 4;
       if (activeSpitters >= cap) kind = "walker";
     }
+    if (kind === "wraith" && activeKindCount("wraith") >= (this.director.wave <= 7 ? 2 : 4)) kind = "crawler";
+    if (kind === "golem" && activeKindCount("golem") >= (this.director.wave <= 10 ? 1 : 2)) kind = "brute";
     const zombie = this.zombies.getFirstDead(false) as ZombieView | null;
     if (!zombie) return false;
     const point = Phaser.Utils.Array.GetRandom(this.spawnPoints);
     const spawnX = point.x + Phaser.Math.Between(-88, 88);
     const spawnY = point.y + Phaser.Math.Between(-12, 12);
     zombie.spawn(`z-${++this.zombieSequence}`, spawnX, spawnY, kind, this.director.wave);
-    zombie.setAlpha(0).setScale(.15);
+    const finalScaleX = zombie.scaleX;
+    const finalScaleY = zombie.scaleY;
+    zombie.setAlpha(0).setScale(finalScaleX * .15, finalScaleY * .15);
     this.tweens.add({
       targets: zombie,
       alpha: 1,
-      scaleX: kind === "runner" ? 1 : ZOMBIES[kind].scale,
-      scaleY: kind === "runner" ? 1 : ZOMBIES[kind].scale,
+      scaleX: finalScaleX,
+      scaleY: finalScaleY,
       duration: 240,
       ease: "Back.Out",
     });
@@ -562,13 +599,18 @@ export class GameScene extends Phaser.Scene {
     this.zombies.getChildren().forEach((child) => {
       const zombie = child as ZombieView;
       if (!zombie.active) return;
-      const lead = zombie.kind === "runner" ? .18 : 0;
-      const ringRadius = zombie.kind === "brute" ? 15 : zombie.kind === "runner" ? 285 : 82;
+      const lead = zombie.kind === "runner" ? .18 : zombie.kind === "crawler" ? .08 : zombie.kind === "wraith" ? .12 : 0;
+      const ringRadius =
+        zombie.kind === "runner" ? 285 :
+        zombie.kind === "wraith" ? 250 :
+        zombie.kind === "brute" || zombie.kind === "golem" ? 16 :
+        zombie.kind === "crawler" ? 58 : 82;
       const targetX = this.player.x + playerVelocity.x * lead + Math.cos(zombie.orbitAngle) * ringRadius;
       const targetY = this.player.y + playerVelocity.y * lead + Math.sin(zombie.orbitAngle) * ringRadius;
       const targetAngle = Phaser.Math.Angle.Between(zombie.x, zombie.y, targetX, targetY);
       let steerX = Math.cos(targetAngle);
       let steerY = Math.sin(targetAngle);
+      let speedMultiplier = 1;
       const directDistance = Phaser.Math.Distance.Between(zombie.x, zombie.y, this.player.x, this.player.y);
       if (zombie.kind === "runner") {
         const directAngle = Phaser.Math.Angle.Between(zombie.x, zombie.y, this.player.x, this.player.y);
@@ -596,6 +638,32 @@ export class GameScene extends Phaser.Scene {
           steerY = 0;
         }
       }
+      if (zombie.kind === "wraith") {
+        const directAngle = Phaser.Math.Angle.Between(zombie.x, zombie.y, this.player.x, this.player.y);
+        if (directDistance < 165) {
+          steerX = -Math.cos(directAngle);
+          steerY = -Math.sin(directAngle);
+        } else if (directDistance < 340) {
+          steerX = -Math.sin(directAngle) * zombie.steerSign;
+          steerY = Math.cos(directAngle) * zombie.steerSign;
+        }
+        if (directDistance < 430 && time >= zombie.nextRangedAt) {
+          zombie.nextRangedAt = time + Phaser.Math.Between(1500, 2300);
+          this.fireSpitterOrb(zombie, 0x9a63ff, 24, 380, 28);
+        }
+      }
+      if (zombie.kind === "crawler") {
+        const directAngle = Phaser.Math.Angle.Between(zombie.x, zombie.y, this.player.x, this.player.y);
+        const zigzag = Math.sin(time * .012 + zombie.orbitAngle * 5) * .9;
+        steerX += -Math.sin(directAngle) * zigzag;
+        steerY += Math.cos(directAngle) * zigzag;
+        if (directDistance < 130) {
+          steerX += Math.cos(directAngle) * 1.3;
+          steerY += Math.sin(directAngle) * 1.3;
+          speedMultiplier = 1.18;
+        }
+      }
+      if (zombie.kind === "golem" && directDistance < 160) speedMultiplier = .82;
 
       obstacles.forEach((object) => {
         const body = object.body as Phaser.Physics.Arcade.StaticBody;
@@ -631,24 +699,30 @@ export class GameScene extends Phaser.Scene {
       }
 
       const length = Math.hypot(steerX, steerY) || 1;
-      const velocityX = steerX / length * zombie.speed;
-      const velocityY = steerY / length * zombie.speed;
+      const velocityX = steerX / length * zombie.speed * speedMultiplier;
+      const velocityY = steerY / length * zombie.speed * speedMultiplier;
       zombie.setVelocity(velocityX, velocityY);
       const walkPulse = 1 + Math.sin(time * .014 + zombie.orbitAngle * 3) * .055;
-      if (zombie.kind === "runner") zombie.setDisplaySize(82 * walkPulse, 82 / walkPulse);
+      const display = zombieDisplaySize(zombie.kind);
+      if (display) zombie.setDisplaySize(display.width * walkPulse, display.height / walkPulse);
       else zombie.setScale(ZOMBIES[zombie.kind].scale * walkPulse, ZOMBIES[zombie.kind].scale / walkPulse);
-      zombie.rotation = zombie.kind === "runner"
+      zombie.rotation = zombie.kind === "runner" || zombie.kind === "wraith"
         ? Phaser.Math.Angle.Between(zombie.x, zombie.y, this.player.x, this.player.y)
         : Math.atan2(velocityY, velocityX);
       const distance = Phaser.Math.Distance.Between(zombie.x, zombie.y, this.player.x, this.player.y);
-      if (zombie.kind !== "runner" && distance < 48 + zombie.displayWidth * .18 && time >= zombie.nextAttackAt) {
-        zombie.nextAttackAt = time + 720;
+      if (
+        zombie.kind !== "runner" &&
+        zombie.kind !== "wraith" &&
+        distance < zombieAttackReach(zombie.kind, zombie.displayWidth) &&
+        time >= zombie.nextAttackAt
+      ) {
+        zombie.nextAttackAt = time + (zombie.kind === "golem" ? 980 : 720);
         this.damagePlayer(zombie.damage, targetAngle);
       }
     });
   }
 
-  private fireSpitterOrb(zombie: ZombieView) {
+  private fireSpitterOrb(zombie: ZombieView, color = 0xff4d1f, damage = 34, speed = 330, size = 34) {
     const projectile = this.enemyProjectiles.getFirstDead(false) as EnemyProjectileView | null;
     if (!projectile) return;
     const leadX = this.player.x + this.player.body!.velocity.x * .38;
@@ -659,11 +733,12 @@ export class GameScene extends Phaser.Scene {
       zombie.y + Math.sin(angle) * 38,
       angle,
       this.time.now,
+      { damage, speed, size, tint: color },
     );
-    const launchFlash = this.add.circle(projectile.x, projectile.y, 12, 0xff8a35, .9)
+    const launchFlash = this.add.circle(projectile.x, projectile.y, 12, color, .9)
       .setBlendMode(Phaser.BlendModes.ADD).setDepth(24);
     this.tweens.add({ targets: launchFlash, scale: 3.4, alpha: 0, duration: 180, onComplete: () => launchFlash.destroy() });
-    const warning = this.add.circle(zombie.x, zombie.y, 30, 0xff4b24, .55).setDepth(10);
+    const warning = this.add.circle(zombie.x, zombie.y, 30, color, .55).setDepth(10);
     this.tweens.add({ targets: warning, scale: 2.3, alpha: 0, duration: 260, onComplete: () => warning.destroy() });
   }
 
@@ -753,7 +828,7 @@ export class GameScene extends Phaser.Scene {
     let remainingHits = bullet.penetration + 1;
     for (const zombie of zombies) {
       if (!bullet.active || !zombie.active || bullet.hitIds.has(zombie.entityId)) continue;
-      const radius = zombie.kind === "brute" ? 45 : zombie.kind === "runner" ? 34 : 30;
+      const radius = zombieHitRadius(zombie.kind);
       const dx = bullet.x - zombie.x;
       const dy = bullet.y - zombie.y;
       if (dx * dx + dy * dy > radius * radius) continue;
@@ -807,7 +882,7 @@ export class GameScene extends Phaser.Scene {
       this.lastHitSoundAt = now;
       this.sound.play("hit", { volume: .18, detune: Phaser.Math.Between(-150, 120) });
     }
-    this.hitSpark(bullet.x, bullet.y, zombie.kind === "runner" ? 0xff533f : 0xb9f278);
+    this.hitSpark(bullet.x, bullet.y, zombieDeathColor(zombie.kind));
     if (zombie.hit(bullet.damage)) this.killZombie(zombie);
     if (bullet.penetration > 0) bullet.penetration--;
     else bullet.despawn();
@@ -828,19 +903,19 @@ export class GameScene extends Phaser.Scene {
     this.comboExpiresAt = this.time.now + 2200;
     this.stats.bestCombo = Math.max(this.stats.bestCombo, this.combo);
     this.stats.kills++;
-    this.player.addMutation(zombie.kind === "brute" ? 28 : zombie.kind === "runner" ? 18 : 8);
+    this.player.addMutation(mutationGain(zombie.kind));
     this.stats.score += zombie.scoreValue * this.combo;
     this.director.onKilled();
     const busy = this.director.wave >= 4;
     if (!busy || this.time.now - this.lastSparkAt > 45) {
-      const ring = this.add.circle(x, y, 18, zombie.kind === "runner" ? 0xff532f : 0x79b956, .55).setDepth(7);
+      const ring = this.add.circle(x, y, 18, zombieDeathColor(zombie.kind), .55).setDepth(7);
       this.tweens.add({ targets: ring, scale: 2.7, alpha: 0, duration: 220, onComplete: () => ring.destroy() });
     }
     const shardCount = busy ? 3 : 7;
     for (let i = 0; i < shardCount; i++) {
       const shard = this.add.circle(
         x, y, Phaser.Math.Between(2, 5),
-        zombie.kind === "runner" ? 0xff5b32 : 0x718956, .9,
+        zombieDeathColor(zombie.kind), .9,
       ).setDepth(14);
       this.tweens.add({
         targets: shard,
@@ -871,12 +946,94 @@ export class GameScene extends Phaser.Scene {
   }
 
   private beginMutation() {
-    this.cameras.main.flash(220, 90, 255, 70, false);
-    this.cameras.main.shake(360, .013);
-    const ring = this.add.circle(this.player.x, this.player.y, 30, 0x7cff46, .75)
+    this.cameras.main.flash(220, 110, 255, 245, false);
+    this.cameras.main.shake(320, .01);
+    const ring = this.add.circle(this.player.x, this.player.y, 30, 0x8dfffa, .72)
       .setBlendMode(Phaser.BlendModes.ADD).setDepth(28);
     this.tweens.add({ targets: ring, scale: 7, alpha: 0, duration: 420, onComplete: () => ring.destroy() });
-    this.showBanner("MUTATION OVERDRIVE", "6 SECONDS // SMASH + SPACE SHOCKWAVE", 650);
+    this.showBanner("FAIRY GUARDIAN", "6 SECONDS // HEAL + AURA BOLTS + SPACE BLAST", 650);
+  }
+
+  private updateFairyPower(time: number) {
+    if (!this.fairySprite || !this.fairyAura) return;
+    if (!this.player.isMutant) {
+      this.fairySprite.setVisible(false).setAlpha(0);
+      this.fairyAura.setVisible(false);
+      return;
+    }
+
+    const orbit = time * .0044;
+    const fairyX = this.player.x + Math.cos(orbit) * 66;
+    const fairyY = this.player.y - 24 + Math.sin(orbit) * 46;
+    const pulse = 1 + Math.sin(time * .012) * .08;
+    this.fairySprite
+      .setVisible(true)
+      .setPosition(fairyX, fairyY)
+      .setDisplaySize(70 * pulse, 70 / pulse)
+      .setAlpha(.86 + Math.sin(time * .018) * .1)
+      .setRotation(Math.sin(time * .006) * .28);
+    this.fairyAura
+      .setVisible(true)
+      .setPosition(this.player.x, this.player.y)
+      .setScale(1 + Math.sin(time * .008) * .08)
+      .setAlpha(.14 + Math.sin(time * .01) * .04);
+
+    if (time >= this.fairyTrailNextAt && this.director.wave < 7) {
+      this.fairyTrailNextAt = time + 80;
+      const mote = this.add.circle(fairyX, fairyY, Phaser.Math.Between(3, 6), 0x8dfffa, .52)
+        .setBlendMode(Phaser.BlendModes.ADD).setDepth(24);
+      this.tweens.add({
+        targets: mote,
+        y: mote.y - Phaser.Math.Between(10, 24),
+        scale: .2,
+        alpha: 0,
+        duration: 360,
+        onComplete: () => mote.destroy(),
+      });
+    }
+
+    if (this.roomClient) return;
+
+    if (time >= this.fairyPulseNextAt) {
+      this.fairyPulseNextAt = time + 650;
+      this.player.health = Math.min(PLAYER.maxHealth, this.player.health + 2.4);
+      this.player.armor = Math.min(75, this.player.armor + 3.2);
+      this.enemyProjectiles.getChildren().forEach((child) => {
+        const projectile = child as EnemyProjectileView;
+        if (!projectile.active) return;
+        if (Phaser.Math.Distance.Between(this.player.x, this.player.y, projectile.x, projectile.y) < 126) {
+          this.hitSpark(projectile.x, projectile.y, 0x8dfffa);
+          projectile.despawn();
+        }
+      });
+    }
+
+    if (time < this.fairyBoltNextAt) return;
+    const target = this.nearestActiveZombie(fairyX, fairyY, 310);
+    if (!target) return;
+    this.fairyBoltNextAt = time + 260;
+    const bolt = this.add.graphics().setDepth(27).setBlendMode(Phaser.BlendModes.ADD);
+    bolt.lineStyle(5, 0x8dfffa, .88).lineBetween(fairyX, fairyY, target.x, target.y);
+    bolt.lineStyle(2, 0xffffff, .9).lineBetween(fairyX, fairyY, target.x, target.y);
+    this.tweens.add({ targets: bolt, alpha: 0, duration: 120, onComplete: () => bolt.destroy() });
+    const damage = 34 * this.weaponScaling(this.director.wave).damageMultiplier;
+    if (target.hit(damage)) this.killZombie(target);
+    else this.hitSpark(target.x, target.y, 0x8dfffa);
+  }
+
+  private nearestActiveZombie(x: number, y: number, maxDistance: number) {
+    let best: ZombieView | undefined;
+    let bestDistance = maxDistance;
+    this.zombies.getChildren().forEach((child) => {
+      const zombie = child as ZombieView;
+      if (!zombie.active) return;
+      const distance = Phaser.Math.Distance.Between(x, y, zombie.x, zombie.y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = zombie;
+      }
+    });
+    return best;
   }
 
   private mutantStrike(time: number, angle: number) {
@@ -982,15 +1139,16 @@ export class GameScene extends Phaser.Scene {
   private spawnResourcePickup(x: number, y: number, kind: Exclude<PickupKind, "weapon">) {
     const texture =
       kind === "health" ? "pickup-medkit-custom" :
-      kind === "armor" ? "pickup-armor-custom" : "pickup-ammo";
+      kind === "armor" ? "pickup-armor-custom" :
+      kind === "overdrive" ? "pickup-fairy-orb" : "pickup-ammo";
     const pickup = this.pickups.create(x, y, texture) as Pickup;
     pickup.kind = kind;
     pickup.expiresAt = this.time.now + 11000;
-    pickup.setDisplaySize(kind === "health" || kind === "armor" ? 44 : 52, kind === "health" || kind === "armor" ? 44 : 34)
+    pickup.setDisplaySize(kind === "health" || kind === "armor" || kind === "overdrive" ? 44 : 52, kind === "health" || kind === "armor" || kind === "overdrive" ? 44 : 34)
       .setTint(kind === "ammo" ? 0xffbf36 : kind === "overdrive" ? 0x4df4e6 : 0xffffff)
       .setDepth(15);
     this.tweens.add({ targets: pickup, y: y - 8, duration: 650, yoyo: true, repeat: -1 });
-    this.addPickupAura(pickup, kind === "health" ? 0xff4f4f : kind === "armor" ? 0x36a9ff : 0xffc342);
+    this.addPickupAura(pickup, kind === "health" ? 0xff4f4f : kind === "armor" ? 0x36a9ff : kind === "overdrive" ? 0x8dfffa : 0xffc342);
   }
 
   private spawnWeaponPickup(x: number, y: number, weaponId: WeaponId) {
@@ -1049,8 +1207,13 @@ export class GameScene extends Phaser.Scene {
       this.player.ammo.pistol.reserve += 24;
       this.player.ammo.rifle.reserve += 36;
       this.player.ammo.magnum.reserve += 12;
+      this.player.ammo.plasma.reserve += 14;
+      this.player.ammo.flamer.reserve += 5;
     }
-    if (pickup.kind === "overdrive") this.player.overdriveUntil = this.time.now + 7000;
+    if (pickup.kind === "overdrive") {
+      this.player.mutation = Math.min(100, this.player.mutation + 36);
+      this.player.overdriveUntil = this.time.now + 5000;
+    }
     if (pickup.kind === "weapon" && pickup.weaponId) {
       this.player.unlockWeapon(pickup.weaponId);
       this.showBanner("WEAPON UNLOCKED", WEAPONS[pickup.weaponId].name, 900);
@@ -1103,4 +1266,53 @@ export class GameScene extends Phaser.Scene {
       yoyo: true, onComplete: () => { panel.destroy(); main.destroy(); sub.destroy(); },
     });
   }
+}
+
+function zombieTexture(kind: ZombieKind) {
+  if (kind === "runner") return "spitter";
+  if (kind === "crawler") return "monster-crawler";
+  if (kind === "wraith") return "monster-wraith";
+  if (kind === "golem") return "monster-golem";
+  return "zombie";
+}
+
+function zombieDisplaySize(kind: ZombieKind) {
+  if (kind === "runner") return { width: 82, height: 82 };
+  if (kind === "crawler") return { width: 74, height: 74 };
+  if (kind === "wraith") return { width: 96, height: 102 };
+  if (kind === "golem") return { width: 126, height: 126 };
+  return undefined;
+}
+
+function zombieHitRadius(kind: ZombieKind) {
+  if (kind === "golem") return 54;
+  if (kind === "brute") return 45;
+  if (kind === "runner" || kind === "wraith") return 34;
+  if (kind === "crawler") return 26;
+  return 30;
+}
+
+function zombieAttackReach(kind: ZombieKind, displayWidth: number) {
+  if (kind === "golem") return 74;
+  if (kind === "brute") return 66;
+  if (kind === "crawler") return 42;
+  return 48 + displayWidth * .18;
+}
+
+function mutationGain(kind: ZombieKind) {
+  if (kind === "golem") return 36;
+  if (kind === "brute") return 28;
+  if (kind === "wraith") return 22;
+  if (kind === "runner") return 18;
+  if (kind === "crawler") return 14;
+  return 8;
+}
+
+function zombieDeathColor(kind: ZombieKind) {
+  if (kind === "runner") return 0xff533f;
+  if (kind === "crawler") return 0x6aff4c;
+  if (kind === "wraith") return 0x9a63ff;
+  if (kind === "golem") return 0xd5c190;
+  if (kind === "brute") return 0xc8a16b;
+  return 0xb9f278;
 }

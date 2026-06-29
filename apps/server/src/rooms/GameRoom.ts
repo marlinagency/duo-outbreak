@@ -25,13 +25,15 @@ type LatestInput = Pick<
   "moveX" | "moveY" | "aimAngle" | "shooting" | "weapon" | "activateSpecial" | "mutantShockwave"
 >;
 
-const weaponOrder = new Set<WeaponId>(["pistol", "smg", "shotgun", "rifle", "magnum"]);
-const weaponByLevel: WeaponId[] = ["pistol", "smg", "shotgun", "rifle", "magnum"];
+const weaponOrder = new Set<WeaponId>(["pistol", "smg", "shotgun", "rifle", "magnum", "plasma", "flamer"]);
+const weaponByLevel: WeaponId[] = ["pistol", "smg", "shotgun", "rifle", "magnum", "plasma", "flamer"];
 const unlocks: Array<{ weapon: WeaponId; kills: number; level: number }> = [
   { weapon: "smg", kills: 12, level: 1 },
   { weapon: "shotgun", kills: 28, level: 2 },
   { weapon: "rifle", kills: 50, level: 3 },
   { weapon: "magnum", kills: 80, level: 4 },
+  { weapon: "plasma", kills: 115, level: 5 },
+  { weapon: "flamer", kills: 150, level: 6 },
 ];
 const spawnPoints = [
   { x: 800, y: 150 },
@@ -132,6 +134,10 @@ export class GameRoom extends Room<{ state: GameState }> {
         player.health = Math.min(PLAYER.maxHealth, player.health + 25);
       }
       const isMutant = now < player.mutantUntil;
+      if (isMutant) {
+        player.health = Math.min(PLAYER.maxHealth, player.health + 2.4 * dt);
+        player.armor = Math.min(75, player.armor + 3.2 * dt);
+      }
       const speed = isMutant ? SERVER_GAME.playerSpeed * 1.32 : SERVER_GAME.playerSpeed;
       player.x = clamp(player.x + moveX * speed * dt, SERVER_GAME.bounds.minX, SERVER_GAME.bounds.maxX);
       player.y = clamp(player.y + moveY * speed * dt, SERVER_GAME.bounds.minY, SERVER_GAME.bounds.maxY);
@@ -207,16 +213,23 @@ export class GameRoom extends Room<{ state: GameState }> {
 
   private pickZombieKind(): ZombieKind {
     const roll = Math.random();
-    if (this.state.wave >= 5 && roll > .92) return "brute";
-    if (this.state.wave >= 2 && roll > .66) return "runner";
+    if (this.state.wave >= 8 && roll > .96) return "golem";
+    if (this.state.wave >= 5 && roll > .88) return "brute";
+    if (this.state.wave >= 5 && roll > .74) return "wraith";
+    if (this.state.wave >= 3 && roll > .53) return "crawler";
+    if (this.state.wave >= 2 && roll > .34) return "runner";
     return "walker";
   }
 
   private spawnZombie(kind: ZombieKind) {
     if (this.state.zombies.size >= SERVER_GAME.maxZombies) return;
-    const activeSpitters = [...this.state.zombies.values()].filter((z) => z.kind === "runner").length;
+    const activeKindCount = (targetKind: ZombieKind) =>
+      [...this.state.zombies.values()].filter((z) => z.kind === targetKind).length;
+    const activeSpitters = activeKindCount("runner");
     const spitterCap = this.state.wave <= 4 ? 2 : this.state.wave <= 8 ? 3 : 4;
     if (kind === "runner" && activeSpitters >= spitterCap) kind = "walker";
+    if (kind === "wraith" && activeKindCount("wraith") >= (this.state.wave <= 7 ? 2 : 4)) kind = "crawler";
+    if (kind === "golem" && activeKindCount("golem") >= (this.state.wave <= 10 ? 1 : 2)) kind = "brute";
     const cfg = SERVER_ZOMBIES[kind];
     const point = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
     const zombie = new ZombieState();
@@ -242,6 +255,7 @@ export class GameRoom extends Room<{ state: GameState }> {
       const distance = distanceBetween(zombie.x, zombie.y, target.x, target.y);
       let steerX = Math.cos(angle);
       let steerY = Math.sin(angle);
+      let speedMultiplier = 1;
       if (zombie.kind === "runner") {
         if (distance < 215) {
           steerX *= -.72;
@@ -255,17 +269,52 @@ export class GameRoom extends Room<{ state: GameState }> {
           this.fireSpitterOrb(zombie, target, angle, now);
         }
       }
-      zombie.x = clamp(zombie.x + steerX * zombie.speed * dt, SERVER_GAME.bounds.minX, SERVER_GAME.bounds.maxX);
-      zombie.y = clamp(zombie.y + steerY * zombie.speed * dt, SERVER_GAME.bounds.minY, SERVER_GAME.bounds.maxY);
+      if (zombie.kind === "wraith") {
+        if (distance < 165) {
+          steerX = -Math.cos(angle);
+          steerY = -Math.sin(angle);
+        } else if (distance < 340) {
+          steerX = -Math.sin(angle);
+          steerY = Math.cos(angle);
+        }
+        if (distance < 430 && now >= zombie.nextRangedAt) {
+          zombie.nextRangedAt = now + 1500 + Math.random() * 800;
+          this.fireSpitterOrb(zombie, target, angle, now, 0x9a63ff, 24, 380, 28);
+        }
+      }
+      if (zombie.kind === "crawler") {
+        const zigzag = Math.sin(now * .012 + zombie.x * .03) * .85;
+        steerX += -Math.sin(angle) * zigzag;
+        steerY += Math.cos(angle) * zigzag;
+        if (distance < 130) speedMultiplier = 1.18;
+      }
+      if (zombie.kind === "golem" && distance < 160) speedMultiplier = .82;
+      const length = Math.hypot(steerX, steerY) || 1;
+      zombie.x = clamp(zombie.x + steerX / length * zombie.speed * speedMultiplier * dt, SERVER_GAME.bounds.minX, SERVER_GAME.bounds.maxX);
+      zombie.y = clamp(zombie.y + steerY / length * zombie.speed * speedMultiplier * dt, SERVER_GAME.bounds.minY, SERVER_GAME.bounds.maxY);
       zombie.rotation = angle;
-      if (zombie.kind !== "runner" && distance < (zombie.kind === "brute" ? 66 : 48) && now >= zombie.nextAttackAt) {
-        zombie.nextAttackAt = now + 980;
+      if (
+        zombie.kind !== "runner" &&
+        zombie.kind !== "wraith" &&
+        distance < zombieAttackReach(zombie.kind) &&
+        now >= zombie.nextAttackAt
+      ) {
+        zombie.nextAttackAt = now + (zombie.kind === "golem" ? 980 : 760);
         this.damagePlayer(target, zombie.damage);
       }
     });
   }
 
-  private fireSpitterOrb(zombie: ZombieState, target: PlayerState, angle: number, now: number) {
+  private fireSpitterOrb(
+    zombie: ZombieState,
+    target: PlayerState,
+    angle: number,
+    now: number,
+    color = 0xff4d1f,
+    damage = 34,
+    speed = 330,
+    width = 34,
+  ) {
     if (this.state.bullets.size >= SERVER_GAME.maxBullets) return;
     const bullet = new BulletState();
     bullet.id = `orb-${++this.bulletSeq}`;
@@ -275,12 +324,12 @@ export class GameRoom extends Room<{ state: GameState }> {
     const leadX = target.x + target.moveX * 70;
     const leadY = target.y + target.moveY * 70;
     bullet.angle = Math.atan2(leadY - zombie.y, leadX - zombie.x);
-    bullet.damage = 34;
-    bullet.speed = 330;
+    bullet.damage = damage;
+    bullet.speed = speed;
     bullet.expiresAt = now + 2800;
-    bullet.color = 0xff4d1f;
-    bullet.width = 34;
-    bullet.radius = 18;
+    bullet.color = color;
+    bullet.width = width;
+    bullet.radius = Math.max(14, width * .52);
     bullet.hostile = true;
     this.state.bullets.set(bullet.id, bullet);
   }
@@ -309,7 +358,7 @@ export class GameRoom extends Room<{ state: GameState }> {
         }
       } else {
         for (const zombie of this.state.zombies.values()) {
-          if (distanceBetween(bullet.x, bullet.y, zombie.x, zombie.y) > (zombie.kind === "brute" ? 42 : 30)) continue;
+          if (distanceBetween(bullet.x, bullet.y, zombie.x, zombie.y) > zombieHitRadius(zombie.kind)) continue;
           zombie.health -= bullet.damage;
           deadBullets.push(bulletId);
           if (zombie.health <= 0) deadZombies.push({ zombie, ownerId: bullet.ownerId });
@@ -351,7 +400,7 @@ export class GameRoom extends Room<{ state: GameState }> {
     if (owner) {
       owner.kills++;
       owner.score += zombie.scoreValue;
-      owner.mutation = Math.min(100, owner.mutation + (zombie.kind === "brute" ? 28 : zombie.kind === "runner" ? 18 : 8));
+      owner.mutation = Math.min(100, owner.mutation + mutationGain(zombie.kind));
       const nextUnlock = unlocks.find((unlock) => owner.kills >= unlock.kills && owner.weaponLevel < unlock.level);
       if (nextUnlock) owner.weaponLevel = nextUnlock.level;
     }
@@ -431,6 +480,30 @@ function weaponScaling(wave: number) {
     damageMultiplier: 1 + Math.min(.7, level * .045),
     fireRateMultiplier: Math.max(.72, 1 - level * .018),
   };
+}
+
+function zombieHitRadius(kind: ZombieKind) {
+  if (kind === "golem") return 54;
+  if (kind === "brute") return 42;
+  if (kind === "runner" || kind === "wraith") return 34;
+  if (kind === "crawler") return 26;
+  return 30;
+}
+
+function zombieAttackReach(kind: ZombieKind) {
+  if (kind === "golem") return 74;
+  if (kind === "brute") return 66;
+  if (kind === "crawler") return 42;
+  return 48;
+}
+
+function mutationGain(kind: ZombieKind) {
+  if (kind === "golem") return 36;
+  if (kind === "brute") return 28;
+  if (kind === "wraith") return 22;
+  if (kind === "runner") return 18;
+  if (kind === "crawler") return 14;
+  return 8;
 }
 
 function randomBetween(min: number, max: number) {

@@ -19,6 +19,8 @@ type TouchButton = {
   radius: number;
 };
 
+const WEAPON_ORDER: WeaponId[] = ["pistol", "smg", "shotgun", "rifle", "magnum", "plasma", "flamer"];
+
 export class DesktopControls {
   private keys: Record<string, Phaser.Input.Keyboard.Key>;
   private weapon: WeaponId = "pistol";
@@ -37,12 +39,11 @@ export class DesktopControls {
 
   constructor(private scene: Phaser.Scene) {
     const keyboard = scene.input.keyboard!;
-    this.keys = keyboard.addKeys("W,A,S,D,R,Q,SPACE,ONE,TWO,THREE,FOUR,FIVE,ESC") as Record<string, Phaser.Input.Keyboard.Key>;
+    this.keys = keyboard.addKeys("W,A,S,D,R,Q,SPACE,ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,ESC") as Record<string, Phaser.Input.Keyboard.Key>;
     scene.input.addPointer(3);
     scene.input.on("wheel", (_p: unknown, _go: unknown, _dx: number, dy: number) => {
-      const order: WeaponId[] = ["pistol", "smg", "shotgun", "rifle", "magnum"];
-      const index = order.indexOf(this.weapon);
-      this.weapon = order[(index + (dy > 0 ? 1 : order.length - 1)) % order.length];
+      const index = WEAPON_ORDER.indexOf(this.weapon);
+      this.weapon = WEAPON_ORDER[(index + (dy > 0 ? 1 : WEAPON_ORDER.length - 1)) % WEAPON_ORDER.length];
     });
     this.createTouchUi();
     scene.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.onPointerDown(pointer));
@@ -66,6 +67,8 @@ export class DesktopControls {
     if (Phaser.Input.Keyboard.JustDown(this.keys.THREE)) this.weapon = "shotgun";
     if (Phaser.Input.Keyboard.JustDown(this.keys.FOUR)) this.weapon = "rifle";
     if (Phaser.Input.Keyboard.JustDown(this.keys.FIVE)) this.weapon = "magnum";
+    if (Phaser.Input.Keyboard.JustDown(this.keys.SIX)) this.weapon = "plasma";
+    if (Phaser.Input.Keyboard.JustDown(this.keys.SEVEN)) this.weapon = "flamer";
     if (this.consumeButton(this.weaponButton)) this.cycleWeapon(player.unlockedWeapons);
     const pointer = this.scene.input.activePointer;
     const aimAngle = this.aimStick
@@ -96,9 +99,9 @@ export class DesktopControls {
       .setStrokeStyle(7, 0xffca3a, .56).setScrollFactor(0).setDepth(420);
     this.aimKnob = this.scene.add.circle(1370, 650, 48, 0xffca3a, .55)
       .setStrokeStyle(3, 0xfff0a4, .65).setScrollFactor(0).setDepth(421);
-    this.mutateButton = this.createButton(1185, 470, "MUTATE", 0x7cff46);
-    this.shockButton = this.createButton(1415, 470, "SHOCK", 0x9cff54);
-    this.weaponButton = this.createButton(800, 650, "WEAPON", 0x4ee9df);
+    this.mutateButton = this.createButton(1185, 470, "FAIRY", 0x8dfffa);
+    this.shockButton = this.createButton(1415, 470, "BLAST", 0x9cff54);
+    this.weaponButton = this.createButton(800, 650, "GUN", 0x4ee9df);
     const alpha = this.prefersTouch() ? 1 : .18;
     [this.moveBase, this.moveKnob, this.aimBase, this.aimKnob,
       this.mutateButton.ring, this.mutateButton.label, this.shockButton.ring, this.shockButton.label,
@@ -205,8 +208,7 @@ export class DesktopControls {
   }
 
   private cycleWeapon(unlockedWeapons?: Set<WeaponId>) {
-    const order: WeaponId[] = ["pistol", "smg", "shotgun", "rifle", "magnum"];
-    const available = order.filter((id) => unlockedWeapons?.has(id) ?? true);
+    const available = WEAPON_ORDER.filter((id) => unlockedWeapons?.has(id) ?? true);
     const weapons: WeaponId[] = available.length > 0 ? available : ["pistol"];
     const index = weapons.indexOf(this.weapon);
     this.weapon = weapons[(index + 1) % weapons.length];

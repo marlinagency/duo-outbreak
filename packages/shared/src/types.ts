@@ -1,5 +1,5 @@
-export type WeaponId = "pistol" | "smg" | "shotgun" | "rifle" | "magnum";
-export type ZombieKind = "walker" | "runner" | "brute";
+export type WeaponId = "pistol" | "smg" | "shotgun" | "rifle" | "magnum" | "plasma" | "flamer";
+export type ZombieKind = "walker" | "runner" | "crawler" | "wraith" | "brute" | "golem";
 export type PickupKind = "health" | "armor" | "ammo" | "overdrive" | "weapon";
 
 export interface InputFrame {

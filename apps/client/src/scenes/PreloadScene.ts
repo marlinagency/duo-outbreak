@@ -25,6 +25,8 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image("weapon-shotgun", `${base}/topdown/weapon_shotgun.png`);
     this.load.image("weapon-rifle", `${base}/topdown/weapon_rifle.png`);
     this.load.image("weapon-magnum", `${base}/topdown/weapon_magnum.png`);
+    this.load.image("weapon-plasma", "/assets/custom/weapon-plasma.png");
+    this.load.image("weapon-flamer", "/assets/custom/weapon-flamer.png");
     this.load.image("tile-floor", `${base}/topdown/tile_floor.png`);
     this.load.image("crate", `${base}/topdown/crate.png`);
     this.load.image("barrel", `${base}/topdown/barrel.png`);
@@ -38,9 +40,14 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image("floor-light-teal", `${base}/topdown/floor_light_teal.png`);
     this.load.image("spitter", "/assets/custom/spitter.png");
     this.load.image("spitter-orb", "/assets/custom/spitter-orb.png");
+    this.load.image("monster-crawler", "/assets/custom/monster-crawler.png");
+    this.load.image("monster-wraith", "/assets/custom/monster-wraith.png");
+    this.load.image("monster-golem", "/assets/custom/monster-golem.png");
     this.load.image("pickup-medkit-custom", "/assets/custom/pickup-medkit.png");
     this.load.image("pickup-armor-custom", "/assets/custom/pickup-armor.png");
     this.load.image("pickup-weapon-crate", "/assets/custom/pickup-weapon-crate.png");
+    this.load.image("pickup-fairy-orb", "/assets/custom/pickup-fairy-orb.png");
+    this.load.image("fairy-companion", "/assets/custom/fairy-companion.png");
     this.load.image("mutant-form", "/assets/custom/mutant-form.png");
     this.load.audio("hit", `${base}/audio/hit.ogg`);
     this.load.audio("metal", `${base}/audio/metal.ogg`);

@@ -13,6 +13,8 @@ export class PlayerView extends Phaser.Physics.Arcade.Sprite {
     shotgun: { mag: WEAPONS.shotgun.magazine, reserve: WEAPONS.shotgun.reserve },
     rifle: { mag: WEAPONS.rifle.magazine, reserve: WEAPONS.rifle.reserve },
     magnum: { mag: WEAPONS.magnum.magazine, reserve: WEAPONS.magnum.reserve },
+    plasma: { mag: WEAPONS.plasma.magazine, reserve: WEAPONS.plasma.reserve },
+    flamer: { mag: WEAPONS.flamer.magazine, reserve: WEAPONS.flamer.reserve },
   };
   nextShotAt = 0;
   invulnerableUntil = 0;
@@ -55,14 +57,16 @@ export class PlayerView extends Phaser.Physics.Arcade.Sprite {
     const id = this.weapon;
     const texture =
       id === "pistol" || id === "magnum" ? "player-pistol" :
-      id === "smg" || id === "rifle" ? "player-smg" : "player-shotgun";
+      id === "smg" || id === "rifle" || id === "plasma" ? "player-smg" : "player-shotgun";
     this.setTexture(texture);
     this.setScale(.94);
     this.body!.setCircle(24, 18, 18);
     this.setTint(
       id === "shotgun" ? 0xffc27a :
       id === "rifle" ? 0x86ecff :
-      id === "magnum" ? 0xffe59a : 0xffffff,
+      id === "magnum" ? 0xffe59a :
+      id === "plasma" ? 0x8dfffa :
+      id === "flamer" ? 0xff9b4d : 0xffffff,
     );
   }
 

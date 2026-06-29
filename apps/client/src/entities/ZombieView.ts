@@ -47,12 +47,16 @@ export class ZombieView extends Phaser.Physics.Arcade.Sprite {
     this.chargingUntil = 0;
     this.nextHitFlashAt = 0;
     this.enableBody(true, x, y, true, true);
-    this.setTexture(kind === "runner" ? "spitter" : "zombie");
+    this.setTexture(zombieTexture(kind));
     if (kind === "runner") this.setDisplaySize(82, 82);
+    else if (kind === "crawler") this.setDisplaySize(74, 74);
+    else if (kind === "wraith") this.setDisplaySize(96, 102);
+    else if (kind === "golem") this.setDisplaySize(126, 126);
     else this.setScale(cfg.scale);
     this.setTint(cfg.tint).setDepth(12);
     this.setAlpha(1);
-    this.body!.setCircle(25, 13, 13);
+    const radius = kind === "golem" ? 38 : kind === "crawler" ? 22 : kind === "wraith" ? 28 : 25;
+    this.body!.setCircle(radius, 13, 13);
   }
 
   hit(damage: number) {
@@ -72,4 +76,12 @@ export class ZombieView extends Phaser.Physics.Arcade.Sprite {
     this.disableBody(true, true);
     this.clearTint();
   }
+}
+
+function zombieTexture(kind: ZombieKind) {
+  if (kind === "runner") return "spitter";
+  if (kind === "crawler") return "monster-crawler";
+  if (kind === "wraith") return "monster-wraith";
+  if (kind === "golem") return "monster-golem";
+  return "zombie";
 }

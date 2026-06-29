@@ -23,8 +23,11 @@ export class WaveDirector {
     if (this.state === "spawning" && this.pending > 0 && now >= this.nextSpawnAt) {
       const roll = Math.random();
       const kind: ZombieKind =
-        this.wave >= 5 && roll > .92 ? "brute" :
-        this.wave >= 2 && roll > .66 ? "runner" : "walker";
+        this.wave >= 8 && roll > .96 ? "golem" :
+        this.wave >= 5 && roll > .88 ? "brute" :
+        this.wave >= 5 && roll > .74 ? "wraith" :
+        this.wave >= 3 && roll > .53 ? "crawler" :
+        this.wave >= 2 && roll > .34 ? "runner" : "walker";
       if (spawn(kind)) {
         this.pending--;
         this.alive++;
